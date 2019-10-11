@@ -64,11 +64,14 @@ void print_row(Row* row){
     else
         printf("{ %d %s %s }\n", row->id, row->username, row->email);
 }
+
 ExecuteResult execute_insert(Statement* statement, Table* table){
     if (table->num_rows >= TABLE_MAX_ROWS ) 
         return EXECUTE_TABLE_FULL;
     
     serialize_row(&statement->row_to_insert, row_slot(table,table->num_rows));
+
+    table->num_rows += 1;
 
     return EXECUTE_SUCCESS;
     
@@ -102,7 +105,7 @@ void free_table(Table* table){
 PrepareResult prepare_statement(InputBuffer* input_buffer, Statement* statement){
     if(strncmp(input_buffer->buffer,"insert",6)==0){
         statement->type = STATEMENT_INSERT;
-        int args = sscanf(input_buffer->buffer,"insert %d %s %s",&statement->row_to_insert.id,&statement->row_to_insert.username,&statement->row_to_insert.email);
+        int args = sscanf(input_buffer->buffer,"insert %d %s %s",&(statement->row_to_insert.id),&(statement->row_to_insert.username),&(statement->row_to_insert.email));
         if (args < 3) return PREPARE_SYNTAX_ERROR;
         return PREPARE_SUCCESS;
     }
