@@ -1,14 +1,22 @@
 #include "repl_helpers.h"
-
+//g++ mainrepl_enum.h mainrepl_struct.h repl_helpers.h mainrepl.c
 int main(int argc, char* argv[]){
+
+    if(argc < 2){
+        printf("Must supply database file name.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    char* filename = argv[1];
     InputBuffer* input_buffer = new_input_buffer();
-    Table* table = new_table();
+    Table* table = open_db(filename);
+
     while(true){
         print_prompt();
         read_input(input_buffer);
 
         if(input_buffer->buffer[0] == '.'){
-            switch(do_meta_command(input_buffer)){
+            switch(do_meta_command(input_buffer, table)){
                 case META_SUCCESS:
                     continue;
                 case META_FAILURE:
@@ -23,11 +31,16 @@ int main(int argc, char* argv[]){
     case PREPARE_SUCCESS:
         break;
     case PREPARE_FAILURE:
-        printf("Unrecognized keyword at start of '%s'.\n",input_buffer->buffer);
+        printf("Error:Unrecognized keyword at start of '%s'.\n",input_buffer->buffer);
         continue;
     case PREPARE_SYNTAX_ERROR:
-        printf("Syntax error. Could not parse the statement.\n");
+        printf("Error:Syntax error. Could not parse the statement.\n");
         continue;
+    case PREPARE_STRING_TOO_LONG:
+        printf("Error:String length too long!.\n");
+        continue;
+    case PREPARE_NEGATIVE_ID:
+        printf("Error:Id must be positive.\n");
     }
     switch(execute_statement(&statement, table)){
         case EXECUTE_SUCCESS:
