@@ -29,4 +29,9 @@ typedef enum{
     EXECUTE_FAILURE
 }ExecuteResult;
 
+//for node types
+typedef enum{
+    NODE_INTERNAL,
+    NODE_LEAF
+}NodeType;
 #endif
