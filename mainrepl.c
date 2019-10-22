@@ -2,11 +2,13 @@
 //g++ mainrepl_enum.h mainrepl_struct.h repl_helpers.h mainrepl.c
 int main(int argc, char* argv[]){
 
+    //read filename to store the db through cmd line args
     if(argc < 2){
         printf("Must supply database file name.\n");
         exit(EXIT_FAILURE);
     }
 
+    //create input buffer and db files (if already exists, open that file)
     char* filename = argv[1];
     InputBuffer* input_buffer = new_input_buffer();
     Table* table = open_db(filename);
@@ -15,6 +17,7 @@ int main(int argc, char* argv[]){
         print_prompt();
         read_input(input_buffer);
 
+        //meta commands handling (begins with '.')
         if(input_buffer->buffer[0] == '.'){
             switch(do_meta_command(input_buffer, table)){
                 case META_SUCCESS:
@@ -25,6 +28,7 @@ int main(int argc, char* argv[]){
             }
         }
 
+    //prepare the read statements
     Statement statement;
     switch (prepare_statement(input_buffer,&statement))
     {
@@ -42,6 +46,7 @@ int main(int argc, char* argv[]){
     case PREPARE_NEGATIVE_ID:
         printf("Error:Id must be positive.\n");
     }
+    //execute the read statements
     switch(execute_statement(&statement, table)){
         case EXECUTE_SUCCESS:
             printf("Executed.\n");        

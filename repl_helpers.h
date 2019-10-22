@@ -1,5 +1,10 @@
 #include "mainrepl_struct.h"
 
+/*
+* function to create a new input buffer
+*
+*returns a pointer to new input buffer
+*/
 InputBuffer* new_input_buffer(){
     InputBuffer* input_buffer = (InputBuffer*)malloc(sizeof(InputBuffer));
     input_buffer->buffer = NULL;
@@ -8,11 +13,17 @@ InputBuffer* new_input_buffer(){
     return input_buffer;
 }
 
+//prints db prompt
 void print_prompt(){
     printf("db > ");
 }
 
+/*
+*function read input from input_buffer
+*@param     input_buffer    buffer from which the input should be read
+*/
 void read_input(InputBuffer* input_buffer){
+    //getline(pointer_to_buffer, buffer_length, input_stream)
     unsigned int bytes_read = getline(&input_buffer->buffer,&input_buffer->buffer_length,stdin);
     if(bytes_read < 0){
         printf("Error in reading input\n");
@@ -23,17 +34,28 @@ void read_input(InputBuffer* input_buffer){
     input_buffer->buffer[bytes_read-1] = 0;
 }
 
+/*
+*function to close the input buffer
+*@param     input_buffer    buffer to close
+*/
 void close_input_buffer(InputBuffer* input_buffer){
     free(input_buffer->buffer);
     free(input_buffer);
 }
 
+/*
+*function to close the pages and store the data to file
+*@param     pager       pointer to Pager with file handle and the pages info
+*@param     page_num    page number of the page to be removed
+*@param     size        size of the page (required for partial pages)
+*/
 void pager_flush(Pager* pager, uint32_t page_num, uint32_t size){
     if (pager->pages[page_num] == NULL){
         printf("Tried to flush a null page.\n");
         exit(EXIT_FAILURE);
     }
 
+    //seek to the page index on the file
     off_t offset = lseek (pager->file_descriptor, page_num * PAGE_SIZE, SEEK_SET);
 
     if(offset == -1){
@@ -41,6 +63,7 @@ void pager_flush(Pager* pager, uint32_t page_num, uint32_t size){
         exit(EXIT_FAILURE);
     }
 
+    //write page contents into the file
     ssize_t bytes_written = write(pager->file_descriptor, pager->pages[page_num], size);
 
     if(bytes_written == -1){
@@ -50,6 +73,10 @@ void pager_flush(Pager* pager, uint32_t page_num, uint32_t size){
 
 }
 
+/*
+*function to close the db
+*@param     table       pointer to the Table contents
+*/
 void db_close(Table* table){
     Pager* pager            = table->pager;
     uint32_t num_full_pages = table->num_rows / ROWS_PER_PAGE;
@@ -93,7 +120,12 @@ void db_close(Table* table){
     free (table);
 }
 
-//get a page from pager
+/*
+*function to get a page
+*@param     pager      pointer to Pager, holding file hadles and the pages 
+*@param     page_num   page number of the page to be removed 
+*returns a pointer to the page
+*/
 void* get_page(Pager* pager, uint32_t page_num){
     if(page_num > TABLE_MAX_PAGES){
         printf("Tried to fetch page number out of bound. %d > %d\n.",page_num, TABLE_MAX_PAGES);
@@ -128,16 +160,25 @@ void* get_page(Pager* pager, uint32_t page_num){
     return pager->pages[page_num];
 }
 
+/*
+*function to get the cursor at the start of the table
+*@param     table      pointer to the Table
+*returns a pointer to the Cursor 
+*/
 Cursor* table_start(Table* table){
     Cursor* cursor = (Cursor*)malloc(sizeof(Cursor));
 
     cursor->table           = table;
     cursor->row_num         = 0;
-    cursor->end_of_table    = (table->num_rows == 1);
+    cursor->end_of_table    = (table->num_rows == 0);
 
     return cursor;
 }
-
+/*
+*function to get the cursor at the end of the table
+*@param     table      pointer to the Table
+*returns a pointer to the Cursor 
+*/
 Cursor* table_end(Table* table){
     Cursor* cursor = (Cursor*)malloc(sizeof(Cursor));
 
@@ -147,8 +188,12 @@ Cursor* table_end(Table* table){
 
     return cursor; 
 }
-
-
+/*
+*function to execute meta commmands
+*@param     input_buffer    pointer to the input buffer
+*@param     table           pointer to table
+*returns an enum of type MetaCmdResult
+*/
 MetaCmdResult do_meta_command(InputBuffer* input_buffer, Table* table){
     if(strcmp(input_buffer->buffer,".exit")==0){
         db_close(table);
@@ -158,23 +203,38 @@ MetaCmdResult do_meta_command(InputBuffer* input_buffer, Table* table){
         return META_FAILURE;
 }
 
-//reading a row
+/*
+*function for inserting a row
+*>>>read from input buffer and inser to end of the table
+*@param     source          source pointer of type Row
+*@param     destination     destination pointer of type void
+*/
 void serialize_row(Row* source, void* destination){
-    memcpy(destination + ID_OFFSET, &(source->id), ID_SIZE);
-//    memcpy(destination + USERNAME_OFFSET, &(source->username),USERNAME_SIZE);
-//    memcpy(destination + EMAIL_OFFSET, &(source->email), EMAIL_SIZE);
-    strncpy( (char*)(destination + USERNAME_OFFSET), source->username, USERNAME_SIZE);
-    strncpy((char*)(destination + EMAIL_OFFSET), source->email, EMAIL_SIZE);
+    memcpy((destination + ID_OFFSET), &(source->id), ID_SIZE);
+//    memcpy((destination + USERNAME_OFFSET), &(source->username),USERNAME_SIZE);
+//    memcpy((destination + EMAIL_OFFSET), &(source->email), EMAIL_SIZE);
+    //if the enteres string is smaller than the size, then fill the remaining slots as NULL
+    strncpy((destination + USERNAME_OFFSET), source->username, USERNAME_SIZE);
+    strncpy((destination + EMAIL_OFFSET), source->email, EMAIL_SIZE);
 }
 
-//writing to a row
+/*
+*function for read a row
+*>>>read from the table and store it in a Row 
+*@param     source          source pointer of type void
+*@param     destination     destination pointer of type Row
+*/
 void deserialize_row(void* source, Row* destination){
     memcpy(&(destination->id), source + ID_OFFSET, ID_SIZE);
     memcpy(&(destination->username), source + USERNAME_OFFSET, USERNAME_SIZE);
     memcpy(&(destination->email),source + EMAIL_OFFSET, EMAIL_SIZE);
 }
 
-//void* row_slot(Table* table, uint32_t row_num){
+/*
+*function to get the address of the cursor
+*@param     cursor      pointer to the cursor
+*returns a pointer to the cursor address
+*/
 void* cursor_value(Cursor* cursor){
     uint32_t row_num = cursor->row_num;
     int page_num = row_num / ROWS_PER_PAGE;
@@ -184,12 +244,20 @@ void* cursor_value(Cursor* cursor){
     return page + byte_offset; 
 }
 
+/*
+*function to advance the cursor to the next row
+*@param     cursor      pointer to the cursor to be advanced
+*/
 void advance_cursor(Cursor* cursor){
     cursor->row_num += 1;
     if(cursor->row_num >= cursor->table->num_rows)
         cursor->end_of_table = true;
 }
 
+/*
+*function to print data from a row
+*@param     row     pointer to row to be printed
+*/
 void print_row(Row* row){
     if(row == NULL)
         printf("Error: Empty Row.\n");
@@ -197,12 +265,18 @@ void print_row(Row* row){
         printf("{ %d %s %s }\n", row->id, row->username, row->email);
 }
 
+/*
+*function to execute insert 
+*@param     statement       pointer to statement to be executed
+*@param     table           pointer to the table on which the statements should be executed
+*returns an enum of type ExecuteResult
+*/
 ExecuteResult execute_insert(Statement* statement, Table* table){
     if (table->num_rows >= TABLE_MAX_ROWS ) 
         return EXECUTE_TABLE_FULL;
     
     Cursor* cursor = table_end(table);
-    serialize_row(&(statement->row_to_insert), cursor);
+    serialize_row(&(statement->row_to_insert),cursor_value(cursor));
 
     table->num_rows += 1;
 
@@ -211,6 +285,12 @@ ExecuteResult execute_insert(Statement* statement, Table* table){
     
 }
 
+/*
+*function to execute select
+*@param     statement       pointer to statement to be executed
+*@param     table           pointer to the table on which the statements should be executed
+*@returns an enum of type ExecuteResult
+*/
 ExecuteResult execute_select(Statement* statement, Table* table){
     Row row;
     Cursor* cursor = table_start(table);
@@ -224,15 +304,11 @@ ExecuteResult execute_select(Statement* statement, Table* table){
     return EXECUTE_SUCCESS;
 }
 
-/*Table* new_table(){
-    Table* table = (Table*)malloc(sizeof(Table));
-    table->num_rows = 0;
-    for(uint32_t i=0; i<TABLE_MAX_PAGES;i++)
-    table->pages[i] = NULL;
-    
-    return table;
-}*/
-
+/*
+*function to open the pager, opens the file passed, initialize the pager & pages
+*@param     filename    name of the file to be opened
+*returns a pointer to the pager with file handles and the pages
+*/
 Pager* open_pager(const char* filename){
     //if file exists open it in read/write mode else create the file
     int fd = open(filename, O_RDWR | O_CREAT);
@@ -242,7 +318,7 @@ Pager* open_pager(const char* filename){
         exit(EXIT_FAILURE);
     }
 
-    off_t file_legth = lseek(fd,0,SEEK_END);
+    off_t file_legth = lseek(fd,0,SEEK_END);//find the length of the file
     
     Pager* pager    = (Pager*)malloc(sizeof(Pager));
     pager->file_descriptor  = fd;
@@ -254,6 +330,11 @@ Pager* open_pager(const char* filename){
     return pager;
 }
 
+/*
+*function to open the db
+*@param     filename    name of the file to store the db
+*returns to the table 
+*/
 Table* open_db(const char* filename){
     Pager*      pager       = open_pager(filename);
     uint32_t    num_rows    = pager->file_length / ROW_SIZE; 
@@ -265,15 +346,12 @@ Table* open_db(const char* filename){
     return table; 
 }
 
-
-/*void free_table(Table* table){
-    for(int i=0; table->pages[i] && i < TABLE_MAX_PAGES;i++)
-        free(table->pages[i]);
-
-    free(table);
-}
+/*
+*function to prepare the commands read for execution
+*@param     input_buffer        pointer to the input buffer
+*@param     statement           pointer to store the statements after preparation
+*returns an enum of type PrepareResult
 */
-
 PrepareResult prepare_statement(InputBuffer* input_buffer, Statement* statement){
     if(strncmp(input_buffer->buffer,"insert",6)==0){
         statement->type = STATEMENT_INSERT;
@@ -302,6 +380,11 @@ PrepareResult prepare_statement(InputBuffer* input_buffer, Statement* statement)
         return PREPARE_FAILURE;
 }
 
+/*
+*function to execute the statements prepared
+*@param     statement   pointer to the prepared statements
+*@param     table       pointer to the table from which to read
+*/
 ExecuteResult execute_statement(Statement* statement, Table* table){
     switch (statement->type)
     {

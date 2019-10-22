@@ -17,36 +17,41 @@
 #define COLUMN_EMAIL_SIZE    255
 #define TABLE_MAX_PAGES      100
 
-
+//input buffer to read the cmds
 typedef struct{
     char* buffer;
     size_t buffer_length;
     size_t input_length;
 }InputBuffer;
 
+//row to store- user ID, user name, email ID
 typedef struct{
     uint32_t    id;
     char        username[COLUMN_USERNAME_SIZE + 1];
     char        email[COLUMN_EMAIL_SIZE + 1];
 }Row;
 
+//read cmds >> statements (insert, select)
 typedef struct{
     StatementType   type;
     Row             row_to_insert;
 }Statement;
 
+//struct to hold page info, file info
 typedef struct {
     int         file_descriptor;
     uint32_t    file_length;
     void*       pages[TABLE_MAX_PAGES];
 }Pager;
 
+//struct to hold db table
 typedef struct {
     uint32_t num_rows;
 //    void*    pages[TABLE_MAX_PAGES];
     Pager*   pager;
 }Table;
 
+//struct to store the cursor
 typedef struct{
     Table*      table;
     uint32_t    row_num;
@@ -54,6 +59,7 @@ typedef struct{
 }Cursor;
 
 //need to use g++ compiler as in C below definitions are not supported
+//c requires them to be compile time constants
 #define size_of_attribute(Struct, Attribute) sizeof(((Struct*)0)->Attribute)
 const uint32_t ID_SIZE          = size_of_attribute(Row, id);
 const uint32_t USERNAME_SIZE    = size_of_attribute(Row, username);
