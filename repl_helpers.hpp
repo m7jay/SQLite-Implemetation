@@ -1,11 +1,10 @@
 #ifndef HELPERS
 #define HELPERS
-#include "mainrepl_struct.h"
-#include "b+tree.h"
+#include "mainrepl_struct.hpp"
+#include "b+tree.hpp"
 /*
-* function to create a new input buffer
-*
-*returns a pointer to new input buffer
+*function to create a new input buffer
+*@returns a pointer to new input buffer
 */
 InputBuffer* new_input_buffer(){
     InputBuffer* input_buffer = (InputBuffer*)malloc(sizeof(InputBuffer));
@@ -15,7 +14,9 @@ InputBuffer* new_input_buffer(){
     return input_buffer;
 }
 
-//prints db prompt
+/*
+*prints db prompt
+*/
 void print_prompt(){
     printf("db > ");
 }
@@ -26,7 +27,7 @@ void print_prompt(){
 */
 void read_input(InputBuffer* input_buffer){
     //getline(pointer_to_buffer, buffer_length, input_stream)
-    unsigned int bytes_read = getline(&input_buffer->buffer,&input_buffer->buffer_length,stdin);
+    size_t bytes_read = getline(&(input_buffer->buffer), &(input_buffer->buffer_length), stdin);
     if(bytes_read < 0){
         printf("Error in reading input\n");
         exit(EXIT_FAILURE);
@@ -46,10 +47,9 @@ void close_input_buffer(InputBuffer* input_buffer){
 }
 
 /*
-*function to close the pages and store the data to file
+*function to flush the data to the db file
 *@param     pager       pointer to Pager with file handle and the pages info
-*@param     page_num    page number of the page to be removed
-*@param     size        size of the page (required for partial pages)
+*@param     page_num    page number of the page to be flushed
 */
 void pager_flush(Pager* pager, uint32_t page_num){
     if (pager->pages[page_num] == NULL){
@@ -124,8 +124,8 @@ void db_close(Table* table){
 /*
 *function to get a page
 *@param     pager      pointer to Pager, holding file hadles and the pages 
-*@param     page_num   page number of the page to be removed 
-*returns a pointer to the page
+*@param     page_num   page number of the page to read 
+*@returns a pointer to the page
 */
 void* get_page(Pager* pager, uint32_t page_num){
     if(page_num > TABLE_MAX_PAGES){
@@ -167,7 +167,7 @@ void* get_page(Pager* pager, uint32_t page_num){
 /*
 *function to get the cursor at the start of the table
 *@param     table      pointer to the Table
-*returns a pointer to the Cursor 
+*@returns a pointer to the Cursor 
 */
 Cursor* table_start(Table* table){
     Cursor* cursor = (Cursor*)malloc(sizeof(Cursor));
@@ -183,12 +183,13 @@ Cursor* table_start(Table* table){
 
     return cursor;
 }
+
 /*
 *function to get the cursor at the end of the table
 *@param     table      pointer to the Table
-*returns a pointer to the Cursor 
+*@returns a pointer to the Cursor 
 */
-Cursor* table_end(Table* table){
+Cursor* table_end(Table* table){ //not used
     Cursor* cursor = (Cursor*)malloc(sizeof(Cursor));
 
     cursor->table        = table;
@@ -202,32 +203,37 @@ Cursor* table_end(Table* table){
 
     return cursor; 
 }
+
 /*
 *function to execute meta commmands
 *@param     input_buffer    pointer to the input buffer
 *@param     table           pointer to table
-*returns an enum of type MetaCmdResult
+*@returns an enum of type MetaCmdResult
 */
 MetaCmdResult do_meta_command(InputBuffer* input_buffer, Table* table){
+
     if(strcmp(input_buffer->buffer,".exit") == 0){
         db_close(table);
         exit(EXIT_SUCCESS);
     }
+
     else if(strcmp(input_buffer->buffer, ".constants") == 0){
         print_constants();
         return META_SUCCESS;
     }
+
     else if(strcmp(input_buffer->buffer,".btree") == 0){
         print_leaf_node(get_page(table->pager,0));
         return META_SUCCESS;
     }
+
     else
         return META_FAILURE;
 }
 
 /*
 *function for inserting a row
-*>>>read from input buffer and inser to end of the table
+*reads from input buffer and insert to the table
 *@param     source          source pointer of type Row
 *@param     destination     destination pointer of type void
 */
@@ -242,7 +248,7 @@ void serialize_row(Row* source, void* destination){
 
 /*
 *function for read a row
-*>>>read from the table and store it in a Row 
+*read from the table and store it in a Row 
 *@param     source          source pointer of type void
 *@param     destination     destination pointer of type Row
 */
@@ -253,9 +259,9 @@ void deserialize_row(void* source, Row* destination){
 }
 
 /*
-*function to get the address of the cursor
+*function to get the value of the node pointed by the cursor
 *@param     cursor      pointer to the cursor
-*returns a pointer to the cursor address
+*@returns a pointer to node value
 */
 void* cursor_value(Cursor* cursor){
     void * page = get_page(cursor->table->pager, cursor->page_num);
@@ -286,7 +292,12 @@ void print_row(Row* row){
         printf("{ %d %s %s }\n", row->id, row->username, row->email);
 }
 
-//insert a value to given cell and key
+/*
+*insert a row based on the key
+*@param cursor  pointer the the cursor
+*@param key     key to be inserted
+*@param value   value of type Row to be inserted
+*/
 void leaf_node_insert(Cursor* cursor, uint32_t key, Row* value){
     void* node = get_page(cursor->table->pager, cursor->page_num);
     uint32_t num_cells = *(leaf_node_num_cells(node));
@@ -316,20 +327,86 @@ void leaf_node_insert(Cursor* cursor, uint32_t key, Row* value){
 }
 
 /*
-*function to execute insert 
+*function to find the position of the key or the position of the key to be moved or the one past the last key
+*@param table       pointer to the table
+*@param page_num    page number of the page to search
+*@param key         key to be find
+*/
+Cursor* leaf_node_find(Table* table, uint32_t page_num, uint32_t key){
+    
+    void* node          = get_page(table->pager, page_num);
+    uint32_t num_cells  = *(leaf_node_num_cells(node));
+
+    Cursor* cursor      = (Cursor*)malloc(sizeof(Cursor));
+    cursor->table       = table;
+    cursor->page_num    = page_num;
+
+    uint32_t min        = 0;
+    uint32_t max        = num_cells;
+    //binary search
+    while(min != max){
+        uint32_t index          = (min + max)/2;
+        uint32_t key_at_index   = *(leaf_node_key(node, index));
+
+        if(key_at_index == key){
+            cursor->cell_num = index;
+            return cursor;
+        }
+        else if(key_at_index < key)
+            max = index;
+        else
+            min = index + 1; 
+//        printf("stuck");
+    }
+
+    cursor->cell_num = min;
+    return cursor;
+}
+
+/*
+*function to find the position to insert a node
+*@param table   pointer to the table
+*@key   key     key to be inserted
+*@returns the positions of the key passed, if key not present returns the position where it should be inserted.
+*/
+Cursor* table_find(Table* table, uint32_t key){
+    uint32_t root_page_num = table->root_page_num;
+    void* root_node = get_page(table->pager, root_page_num);
+    if(get_node_type(root_node) == NODE_LEAF)
+    return leaf_node_find(table, root_page_num, key);
+    else{
+        printf("Need to implement searching an internal node.\n");
+        exit(EXECUTE_FAILURE);
+    }
+}
+
+/*
+*function to execute insert operation
 *@param     statement       pointer to statement to be executed
 *@param     table           pointer to the table on which the statements should be executed
-*returns an enum of type ExecuteResult
+*@returns an enum of type ExecuteResult
 */
 ExecuteResult execute_insert (Statement* statement, Table* table){
 
-    void* node = get_page (table->pager, table->root_page_num);
+    void*       node        = get_page (table->pager, table->root_page_num);
+    uint32_t    num_cells   = *(leaf_node_num_cells (node));
+
     //check if table is full
-    if (*(leaf_node_num_cells (node)) >= LEAF_NODE_MAX_CELLS) 
+    if (num_cells >= LEAF_NODE_MAX_CELLS) 
         return EXECUTE_TABLE_FULL;
     
-    Cursor* cursor = table_end (table);
-    leaf_node_insert (cursor, (statement->row_to_insert.id), &(statement->row_to_insert));
+    //Cursor* cursor = table_end (table);
+    uint32_t    key     = statement->row_to_insert.id;
+    Cursor*     cursor  =  table_find(table, key);
+
+
+    if(cursor->cell_num < num_cells){
+        uint32_t ket_at_cursor = *leaf_node_key(node, cursor->cell_num);
+        if(ket_at_cursor == key)
+            return EXECUTE_DUPLICATE_KEY;
+    }
+
+    leaf_node_insert (cursor, key, &(statement->row_to_insert));
 
     free (cursor);
     return EXECUTE_SUCCESS;
@@ -337,7 +414,7 @@ ExecuteResult execute_insert (Statement* statement, Table* table){
 }
 
 /*
-*function to execute select
+*function to execute select operation
 *@param     statement       pointer to statement to be executed
 *@param     table           pointer to the table on which the statements should be executed
 *@returns an enum of type ExecuteResult
@@ -356,15 +433,16 @@ ExecuteResult execute_select(Statement* statement, Table* table){
 }
 
 /*
-*function to open the pager, opens the file passed, initialize the pager & pages
+*function to open the pager, opens the file passed, initialize the page handle & pages
 *@param     filename    name of the file to be opened
-*returns a pointer to the pager with file handles and the pages
+*@returns a pointer to the pager with file handles and the pages
 */
 Pager* open_pager(const char* filename){
+
     //if file exists open it in read/write mode else create the file
     int fd = open(filename, O_RDWR | O_CREAT);
 
-    if(fd == -1){
+    if(fd == -1){//failed to open/create file
         printf("Unable to open file\n.");
         exit(EXIT_FAILURE);
     }
@@ -389,8 +467,8 @@ Pager* open_pager(const char* filename){
 
 /*
 *function to open the db
-*@param     filename    name of the file to store the db
-*returns to the table 
+*@param     filename    name of the db file
+*@returns pointer to the table 
 */
 Table* open_db(const char* filename){
     Pager*      pager    = open_pager(filename);
@@ -414,12 +492,14 @@ Table* open_db(const char* filename){
 *returns an enum of type PrepareResult
 */
 PrepareResult prepare_statement(InputBuffer* input_buffer, Statement* statement){
+
     if(strncmp(input_buffer->buffer,"insert",6)==0){
         statement->type = STATEMENT_INSERT;
         char* keyword   = strtok(input_buffer->buffer," ");
         char* id_str    = strtok(NULL," ");
         char* username  = strtok(NULL," ");
         char* email     = strtok(NULL," ");    
+
         if (id_str == NULL || username == NULL || email == NULL)
             return PREPARE_SYNTAX_ERROR;
 
@@ -433,10 +513,12 @@ PrepareResult prepare_statement(InputBuffer* input_buffer, Statement* statement)
         strcpy(statement->row_to_insert.email, email);
         return PREPARE_SUCCESS;
     }
+
     else if(strcmp(input_buffer->buffer,"select")==0){
         statement->type = STATEMENT_SELECT;
         return PREPARE_SUCCESS;
     }
+
     else
         return PREPARE_FAILURE;
 }
@@ -444,7 +526,8 @@ PrepareResult prepare_statement(InputBuffer* input_buffer, Statement* statement)
 /*
 *function to execute the statements prepared
 *@param     statement   pointer to the prepared statements
-*@param     table       pointer to the table from which to read
+*@param     table       pointer to the table
+*@returns execution results of type ExecuteResult
 */
 ExecuteResult execute_statement(Statement* statement, Table* table){
     switch (statement->type)

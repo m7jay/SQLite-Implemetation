@@ -1,5 +1,5 @@
-#include "repl_helpers.h"
-//g++ mainrepl_enum.h mainrepl_struct.h repl_helpers.h mainrepl.c
+#include "repl_helpers.hpp"
+//g++ mainrepl_enum.h mainrepl_struct.h  "b+tree.h" repl_helpers.h mainrepl.c
 int main(int argc, char* argv[]){
 
     //read filename to store the db through cmd line args
@@ -20,8 +20,10 @@ int main(int argc, char* argv[]){
         //meta commands handling (begins with '.')
         if(input_buffer->buffer[0] == '.'){
             switch(do_meta_command(input_buffer, table)){
+    
                 case META_SUCCESS:
                     continue;
+    
                 case META_FAILURE:
                     printf("Unrecognized command '%s'.\n",input_buffer->buffer);
                     continue;
@@ -32,26 +34,38 @@ int main(int argc, char* argv[]){
     Statement statement;
     switch (prepare_statement(input_buffer,&statement))
     {
-    case PREPARE_SUCCESS:
-        break;
-    case PREPARE_FAILURE:
-        printf("Error:Unrecognized keyword at start of '%s'.\n",input_buffer->buffer);
-        continue;
-    case PREPARE_SYNTAX_ERROR:
-        printf("Error:Syntax error. Could not parse the statement.\n");
-        continue;
-    case PREPARE_STRING_TOO_LONG:
-        printf("Error:String length too long!.\n");
-        continue;
-    case PREPARE_NEGATIVE_ID:
-        printf("Error:Id must be positive.\n");
+    
+        case PREPARE_SUCCESS:
+            break;
+    
+        case PREPARE_FAILURE:
+            printf("Error:Unrecognized keyword at start of '%s'.\n",input_buffer->buffer);
+            continue;
+    
+        case PREPARE_SYNTAX_ERROR:
+            printf("Error:Syntax error. Could not parse the statement.\n");
+            continue;
+    
+        case PREPARE_STRING_TOO_LONG:
+            printf("Error:String length too long!.\n");
+            continue;
+    
+        case PREPARE_NEGATIVE_ID:
+            printf("Error:Id must be positive.\n");
+            continue;
     }
+
     //execute the read statements
     switch(execute_statement(&statement, table)){
+        
         case EXECUTE_SUCCESS:
             printf("Executed.\n");        
             break;
         
+        case EXECUTE_DUPLICATE_KEY:
+            printf("Error: Duplicate key.\n");
+            break;
+
         case EXECUTE_TABLE_FULL:
             printf("Error: Table full.\n");
             break;
