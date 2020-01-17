@@ -205,6 +205,50 @@ Cursor* table_end(Table* table){ //not used
 }
 
 /*
+*function to print the correct indentations
+*/
+void indent(uint32_t level){
+    for(uint32_t i = 0 ; i < level; i++)
+        printf("  ");
+}
+
+/*
+*function to recursively print a node and its childrens
+*@param pager
+*@param page_num
+*@param indentation_level
+*/
+void print_tree(Pager* pager, uint32_t page_num, uint32_t indentation_level){
+    void* node = get_page(pager, page_num);
+    uint32_t num_keys, child;
+
+    switch(get_node_type(node)){
+        case NODE_LEAF:
+            num_keys = *(leaf_node_num_cells(node));
+            indent(indentation_level);
+            printf("- leaf %d\n", num_keys);
+            for(uint32_t i = 0; i < num_keys; i++){
+                indent(indentation_level+1);
+                printf("- %d\n", *leaf_node_key(node, i));
+            }
+            break;
+        case NODE_INTERNAL:
+            num_keys = *(internal_node_num_keys(node));
+            indent(indentation_level);
+            printf("- internal %d\n", num_keys);
+            for(uint32_t i = 0; i < num_keys; i++){
+                child = *internal_node_child(node, i);
+                print_tree(pager, child, indentation_level+1);
+                indent(indentation_level+1);
+                printf("- key %d\n", *internal_node_key(node, i));
+            }
+            child = *(internal_node_right_child(node));
+            print_tree(pager, child, indentation_level+1);
+            break;
+    }
+}
+
+/*
 *function to execute meta commmands
 *@param     input_buffer    pointer to the input buffer
 *@param     table           pointer to table
@@ -223,7 +267,8 @@ MetaCmdResult do_meta_command(InputBuffer* input_buffer, Table* table){
     }
 
     else if(strcmp(input_buffer->buffer,".btree") == 0){
-        print_leaf_node(get_page(table->pager,0));
+        //print_leaf_node(get_page(table->pager,0));
+        print_tree(table->pager, 0, 1);
         return META_SUCCESS;
     }
 
@@ -293,6 +338,99 @@ void print_row(Row* row){
 }
 
 /*
+*until recycling of the free pages is implemented, new pages will be added to the end of the db file
+*@param pager   pointer to pager
+*@returns next page number
+*/
+uint32_t get_unused_page_num(Pager* pager){
+    return pager->num_pages;
+}
+
+/*
+*we have already allocated the rigth child, 
+*this function takes the rigth child as input 
+*and allocates a new page to store the left child
+*@param table                   pointer to table
+*@param right_child_page_num    right child page number
+*/
+void create_new_root(Table* table, uint32_t right_child_page_num){
+    /*
+    *Splitting the root is handled by
+    *old root is copied to the new page, becomes the left child
+    *address of the rigth child is passed in 
+    *reinitialize the root page to contain the new root node
+    *new root node points to two children 
+    */
+   void* root                   = get_page(table->pager, table->root_page_num);
+   void* right_child            = get_page(table->pager, right_child_page_num);
+   uint32_t left_child_page_num = get_unused_page_num(table->pager);
+   void* left_child             = get_page(table->pager, left_child_page_num); 
+
+    //copy old node as left child
+    memcpy(left_child, root, PAGE_SIZE);
+    set_node_root(left_child, false);
+
+    //root node is new internal node with one key and two children
+    initialize_internal_node(root);
+    set_node_root(root, true);
+    *(internal_node_num_keys(root))    = 1;
+    *(internal_node_child(root, 0))    = left_child_page_num;
+    *(internal_node_key(root, 0))      = get_node_max_key(left_child);
+    *(internal_node_right_child(root)) = right_child_page_num; 
+}
+
+/*
+*Create a new node and move half of the cells over,
+*Insert the new value to one of the two nodes,
+*update parent or create a new parent
+*@param cursor      cursor pointing to the position where the new node to be inserted
+*@param key         key of the new node to be inserted
+*@param value       pointert to the value to be inserted
+*/
+void leaf_node_split_and_insert(Cursor* cursor, uint32_t key, Row* value){
+
+    void* old_node          = get_page(cursor->table->pager, cursor->page_num);
+    uint32_t new_page_num   = get_unused_page_num(cursor->table->pager);
+    void* new_node          = get_page(cursor->table->pager, new_page_num);
+    initialize_leaf_node(new_node);
+
+    /*
+    *All exisiting keys + new key should be 
+    *divided evenly between old (left) and the new(right) nodes.
+    * starting from the right, move each key to correct position. 
+    */
+    for(int32_t i =LEAF_NODE_MAX_CELLS; i >= 0; i--){
+        void* destination_node;
+        if(i >= LEAF_NODE_LEFT_SPLIT_COUNT)
+            destination_node = new_node;
+        else
+            destination_node = old_node;
+
+        uint32_t index_within_node = i % LEAF_NODE_LEFT_SPLIT_COUNT;
+        void* destination = leaf_node_cell(destination_node, index_within_node);
+
+        if(i == cursor->cell_num)
+            serialize_row(value, destination);
+        else if(i > cursor->cell_num)
+            memcpy(destination, leaf_node_cell(old_node, i-1), LEAF_NODE_CELL_SIZE);
+        else
+            memcpy(destination, leaf_node_cell(old_node, i), LEAF_NODE_CELL_SIZE);
+    }
+    //update the cell count on left and rigth child nodes
+    *(leaf_node_num_cells(old_node)) = LEAF_NODE_LEFT_SPLIT_COUNT;
+    *(leaf_node_num_cells(new_node)) = LEAF_NODE_RIGHT_SPLIT_COUNT;
+
+    //update the parent node, if the parent was a root node, create a new root node
+    if(is_root_node(old_node))
+        return create_new_root(cursor->table, new_page_num);
+    else{
+        printf("Need to implement updating parent after split\n");
+        exit(EXIT_FAILURE);
+    }
+
+}
+
+/*
 *insert a row based on the key
 *@param cursor  pointer the the cursor
 *@param key     key to be inserted
@@ -304,9 +442,11 @@ void leaf_node_insert(Cursor* cursor, uint32_t key, Row* value){
 
     //check if the node is already having max cells
     if(num_cells >= LEAF_NODE_MAX_CELLS){
-        //Node full, need to implement splitting
-        printf("Need to implement splitting a leaf node.\n");
-        exit(EXIT_FAILURE);
+        //Node full
+//        printf("Need to implement splitting a leaf node.\n");
+//        exit(EXIT_FAILURE);
+        leaf_node_split_and_insert(cursor, key, value);
+        return;
     }
 
     //check if the cell num is less than the number of cells in the node
@@ -392,8 +532,8 @@ ExecuteResult execute_insert (Statement* statement, Table* table){
     uint32_t    num_cells   = *(leaf_node_num_cells (node));
 
     //check if table is full
-    if (num_cells >= LEAF_NODE_MAX_CELLS) 
-        return EXECUTE_TABLE_FULL;
+//    if (num_cells >= LEAF_NODE_MAX_CELLS) 
+//        return EXECUTE_TABLE_FULL;
     
     //Cursor* cursor = table_end (table);
     uint32_t    key     = statement->row_to_insert.id;
@@ -480,6 +620,7 @@ Table* open_db(const char* filename){
         //new db file, intialize the page 0 as the leaf node
         void* root_node = get_page(pager, 0);
         initialize_leaf_node(root_node);
+        set_node_root(root_node, true);
     }
 
     return table; 

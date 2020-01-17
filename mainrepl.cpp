@@ -1,5 +1,5 @@
 #include "repl_helpers.hpp"
-//g++ mainrepl_enum.h mainrepl_struct.h  "b+tree.h" repl_helpers.h mainrepl.c
+
 int main(int argc, char* argv[]){
 
     //read filename to store the db through cmd line args
