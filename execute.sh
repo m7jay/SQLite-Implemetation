@@ -1,2 +1,2 @@
 #!/bin/sh
-./a.out ./.db/my.db
+./a.out ./db/my.db

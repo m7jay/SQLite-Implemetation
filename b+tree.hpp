@@ -79,6 +79,15 @@ void set_node_type(void* node, NodeType type){
 }
 
 /*
+*function to get the next leaf node
+*@param node    pointer to the current node
+*@returns a pointer to the next node
+*/
+uint32_t* leaf_node_next_leaf(void* node){
+    return (uint32_t*) (node + LEAF_NODE_NEXT_LEAF_OFFSET);
+}
+
+/*
 *funtion to initialize the leaf node 
 *@param  node       pointer to a node
 */
@@ -86,6 +95,7 @@ void initialize_leaf_node(void* node){
     set_node_type(node, NODE_LEAF);
     set_node_root(node, false);
     *(leaf_node_num_cells(node)) = 0;
+    *(leaf_node_next_leaf(node)) = 0;
 }
 
 /*
